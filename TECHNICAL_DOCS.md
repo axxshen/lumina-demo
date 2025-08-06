@@ -106,21 +106,32 @@ class GemmaService extends ChangeNotifier {
 
       if (!await modelManager.isModelInstalled) {
         onStatusUpdate?.call("📥 Downloading model...");
-        await modelManager.downloadModelFromURL(
-          url: url,
-          onProgress: onProgress,
-        );
+
+        // Download model with progress tracking
+        await for (var progress
+            in modelManager.downloadModelFromNetworkWithProgress(url)) {
+          onProgress?.call(progress / 100.0);
+          onStatusUpdate?.call(
+            "📥 Downloading model: ${progress.toStringAsFixed(1)}%",
+          );
+        }
       }
 
       // Load the model with multimodal support
       onStatusUpdate?.call("🔄 Loading model...");
-      _inferenceModel = await _gemma.loadLocalModel(
-        modelBytes: await modelManager.getModelBinaryData(),
-        modelConfig: ModelConfig(enableVisionModality: true),
+      _inferenceModel = await _gemma.createModel(
+        modelType: ModelType.gemmaIt, // Gemma 3 Nano E2B uses gemmaIt type
+        preferredBackend: PreferredBackend.gpuFloat16, // Use GPU for better performance
+        maxTokens: 4096,
+        supportImage: true, // Enable image support
+        maxNumImages: 1, // Single image support
       );
 
       // Create session with multimodal support
       _session = await _inferenceModel!.createSession(
+        temperature: 1.0,
+        randomSeed: 1,
+        topK: 1,
         enableVisionModality: true,
       );
       
@@ -240,9 +251,9 @@ class YOLOService extends ChangeNotifier {
   double _currentFps = 0.0;
 
   // Detection thresholds
-  double _confidenceThreshold = 0.25;
-  double _iouThreshold = 0.45;
-  int _numItemsThreshold = 3;
+  final double _confidenceThreshold = 0.22;
+  final double _iouThreshold = 0.45;
+  final int _numItemsThreshold = 30;
 
   // Getters
   bool get isModelLoading => _isModelLoading;
@@ -423,11 +434,11 @@ class DepthEstimationService extends ChangeNotifier {
         depth = (avgRealSize * avgFocalLength) / avgPixelSize;
         break;
         
-      case DepthCalculationMethod.widthBased:
+      case DepthCalculationMethod.width:
         depth = (objectDimensions.width * _config.focalLengthX) / pixelWidth;
         break;
         
-      case DepthCalculationMethod.heightBased:
+      case DepthCalculationMethod.height:
         depth = (objectDimensions.height * _config.focalLengthY) / pixelHeight;
         break;
     }
@@ -486,9 +497,11 @@ class DepthEstimationConfig {
 }
 
 enum DepthCalculationMethod {
+  width,
+  height,
   averageDimension,
-  widthBased,
-  heightBased,
+  maxDimension,
+  minDimension,
 }
 
 class ObjectDimensions {
@@ -713,12 +726,12 @@ class SpeechService extends ChangeNotifier {
           _recognizedText = result.recognizedWords;
           notifyListeners();
         },
-        listenFor: const Duration(hours: 1),
-        pauseFor: const Duration(hours: 1),
+        listenFor: const Duration(hours: 1), // Very long duration - essentially unlimited
+        pauseFor: const Duration(hours: 1), // Very long pause duration - prevent auto-stop
         listenOptions: stt.SpeechListenOptions(
-          partialResults: true,
-          cancelOnError: true,
-          onDevice: false,
+          partialResults: true, // Enable real-time transcription
+          cancelOnError: true, // Cancel on error
+          onDevice: false, // Use server-based recognition for better continuous listening
         ),
       );
       _isListening = true;
@@ -962,7 +975,7 @@ void main() async {
   // Hide system UI for immersive experience
   SystemChrome.setEnabledSystemUIMode(
     SystemUiMode.immersiveSticky,
-    overlays: [],
+    overlays: [], // Completely hide status bar and navigation bar
   );
 
   runApp(MyApp());
@@ -986,8 +999,13 @@ class MyApp extends StatelessWidget {
         theme: ThemeData(
           brightness: Brightness.dark,
           primarySwatch: Colors.blue,
+          scaffoldBackgroundColor: Colors.black,
         ),
-        home: ModelSetupScreen(),
+        initialRoute: '/setup',
+        routes: {
+          '/setup': (context) => const ModelSetupScreen(),
+          '/home': (context) => const CameraApp(),
+        },
       ),
     );
   }

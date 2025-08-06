@@ -10,6 +10,8 @@ Lumina is an innovative Flutter mobile application designed to empower visually 
 
 [![Watch the Demo](https://img.youtube.com/vi/G3-jX3C1phU/hqdefault.jpg)](https://youtu.be/G3-jX3C1phU)
 
+The product release is coming soon, VoiceOver is fully supported - stay tuned!
+
 ## Features
 
 - **Visual Question Answering (VQA)**: Ask questions about your surroundings and get detailed descriptions powered by AI
@@ -23,7 +25,7 @@ Lumina is an innovative Flutter mobile application designed to empower visually 
 
 ### Apple Developer Program Membership
 
-**⚠️ Important**: To run this app on iOS devices, you must have an active **Apple Developer Program** membership ($99/year).
+To run this app on iOS devices, you must have an active **Apple Developer Program** membership ($99/year) to set up the necessary entitlements for extended memory usage on devices.
 
 ### System Requirements
 
@@ -82,8 +84,18 @@ flutter pub get
 3. **Update Entitlements**:
    The app requires specific entitlements in `ios/Runner/Runner.entitlements`:
    ```xml
-   <key>com.apple.developer.on-demand-install-capable</key>
-   <true/>
+   <?xml version="1.0" encoding="UTF-8"?>
+   <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+   <plist version="1.0">
+   <dict>
+      <key>com.apple.developer.kernel.extended-virtual-addressing</key>
+      <true/>
+      <key>com.apple.developer.kernel.increased-memory-limit</key>
+      <true/>
+      <key>com.apple.developer.kernel.increased-debugging-memory-limit</key>
+      <true/>
+   </dict>
+   </plist>
    ```
 
 ### 5. Run the Application
@@ -153,43 +165,12 @@ app/
 
 For detailed implementation guides, including Gemma 3B integration, common challenges, and solutions, see:
 
-📋 **[TECHNICAL_DOCS.md](TECHNICAL_DOCS.md)** - Complete guide for building Lumina from scratch
-
-## Development Guidelines
-
-### Building for Production
-
-1. **iOS**:
-   ```bash
-   flutter build ios --release
-   ```
-
-2. **Android**:
-   ```bash
-   flutter build apk --release
-   ```
-
-### Code Signing (iOS)
-
-Ensure your `ios/Runner.xcodeproj` is properly configured with:
-- Valid development team
-- Correct bundle identifier
-- Appropriate provisioning profile
-- Required device capabilities and permissions
-
-## Troubleshooting
-
-### Common Issues
-
-1. **iOS Code Signing Errors**: Verify Apple Developer Program membership and provisioning profiles
-2. **Permission Denied**: Ensure all required permissions are granted in device settings
-3. **Model Loading Issues**: Check internet connection for initial model downloads
-4. **Camera Access**: Verify camera permissions and hardware availability
+📋 **[TECHNICAL_DOCS.md](TECHNICAL_DOCS.md)** 
 
 ### Support
 
-For technical support and feature requests, please refer to the project documentation or contact the development team.
+Please contact the development team or open a new [issue](https://github.com/axxshen/lumina-demo/issues).
 
 ---
 
-*Lumina - Empowering independence through AI-powered vision assistance.*
+*Lumina - The world sees you*
