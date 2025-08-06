@@ -2,7 +2,7 @@
 
 **Complete implementation docs**
 
-This comprehensive technical documentation provides detailed guidance for understanding and extending Lumina's real implementation, including advanced AI integration, actual service architecture, and proven solutions.
+This comprehensive technical documentation provides detailed guidance for understanding and extending Lumina's implementation, including advanced AI integration, actual service architecture, and proven solutions.
 
 ## Table of Contents
 
@@ -12,19 +12,19 @@ This comprehensive technical documentation provides detailed guidance for unders
   - [Flutter Gemma 3n Integration](#flutter-gemma-3n-integration)
     - [Core Implementation](#core-implementation)
   - [YOLO11n Object Detection Implementation](#yolo11n-object-detection-implementation)
-    - [Real YOLO Service Implementation](#real-yolo-service-implementation)
-    - [Model Types (Actual Implementation)](#model-types-actual-implementation)
+    - [YOLO Service Implementation](#yolo-service-implementation)
+    - [Model Types](#model-types)
   - [Depth Estimation Pipeline](#depth-estimation-pipeline)
-    - [Real Depth Estimation Service](#real-depth-estimation-service)
+    - [Depth Estimation Service](#depth-estimation-service)
   - [Speech Integration Architecture](#speech-integration-architecture)
-    - [Text-to-Speech Service (Real Implementation)](#text-to-speech-service-real-implementation)
-    - [Speech-to-Text Service (Real Implementation)](#speech-to-text-service-real-implementation)
+    - [Text-to-Speech Service](#text-to-speech-service)
+    - [Speech-to-Text Service](#speech-to-text-service)
   - [Obstacle Avoidance System](#obstacle-avoidance-system)
-    - [Real Obstacle Avoidance Implementation](#real-obstacle-avoidance-implementation)
+    - [Obstacle Avoidance Implementation](#obstacle-avoidance-implementation)
   - [Camera Service Implementation](#camera-service-implementation)
-    - [Real Camera Service](#real-camera-service)
+    - [Camera Service](#camera-service)
   - [State Management with Provider](#state-management-with-provider)
-    - [Main App Structure (Real Implementation)](#main-app-structure-real-implementation)
+    - [Main App Structure](#main-app-structure)
   - [Common Development Challenges \& Solutions](#common-development-challenges--solutions)
     - [Challenge #1: Model Loading and Memory Management](#challenge-1-model-loading-and-memory-management)
     - [Challenge #2: Real-time Performance](#challenge-2-real-time-performance)
@@ -165,7 +165,7 @@ class GemmaService extends ChangeNotifier {
         if (imageBytes != null) {
           final prompt = text.isNotEmpty
               ? text
-              : "Please describe what you see in this image. Keep the response concise and relevant within 3 short sentences.";
+              : "Please describe what you see in this image. And respond to the user query if any. Keep the response concise and relevant within 3 short sentences without markdown formatting.";
 
           final instruction = "Keep the response concise and relevant without unnecessary details.";
           final fullPrompt = "$prompt $instruction";
@@ -207,7 +207,7 @@ class GemmaService extends ChangeNotifier {
       await _session!.addQueryChunk(message);
       
       // Stream the response chunks
-      await for (final chunk in _session!.getResponseStream()) {
+      await for (final chunk in _session!.getResponseAsync()) {
         yield chunk;
       }
     } catch (e) {
@@ -219,7 +219,7 @@ class GemmaService extends ChangeNotifier {
 
 ## YOLO11n Object Detection Implementation
 
-### Real YOLO Service Implementation
+### YOLO Service Implementation
 
 ```dart
 // services/yolo_service.dart - ACTUAL IMPLEMENTATION
@@ -314,7 +314,7 @@ class YOLOService extends ChangeNotifier {
     _detectionResults = results;
     _detectionCount = results.length;
 
-    // Integrate with depth estimation
+    // Estimate depth for all detections
     _depthService.estimateDepthForDetections(results);
 
     notifyListeners();
@@ -333,7 +333,7 @@ class YOLOService extends ChangeNotifier {
 }
 ```
 
-### Model Types (Actual Implementation)
+### Model Types
 
 ```dart
 // models/model_type.dart - ACTUAL IMPLEMENTATION
@@ -364,7 +364,7 @@ enum ModelType {
 
 ## Depth Estimation Pipeline
 
-### Real Depth Estimation Service
+### Depth Estimation Service
 
 ```dart
 // services/depth_estimation_service.dart - ACTUAL IMPLEMENTATION
@@ -375,14 +375,40 @@ class DepthEstimationService extends ChangeNotifier {
   static final DepthEstimationService _instance = DepthEstimationService._internal();
   static DepthEstimationService get instance => _instance;
 
+  DepthEstimationService._internal();
+
   // Configuration
   DepthEstimationConfig _config = DepthEstimationConfig.mobile();
-  
-  // Depth results for current detections
-  final Map<String, double> _depthResults = {};
+  List<DepthEstimationResult> _latestResults = [];
+  bool _isEnabled = true;
 
-  Map<String, double> get depthResults => Map.unmodifiable(_depthResults);
+  // Statistics tracking
+  int _totalEstimations = 0;
+  double _averageDepth = 0.0;
+  final Map<String, int> _classStatistics = {};
+
+  // Getters
   DepthEstimationConfig get config => _config;
+  List<DepthEstimationResult> get latestResults => _latestResults;
+  bool get isEnabled => _isEnabled;
+  int get totalEstimations => _totalEstimations;
+  double get averageDepth => _averageDepth;
+  Map<String, int> get classStatistics => Map.unmodifiable(_classStatistics);
+
+  /// Update the depth estimation configuration
+  void updateConfig(DepthEstimationConfig newConfig) {
+    _config = newConfig;
+    notifyListeners();
+  }
+
+  /// Enable or disable depth estimation
+  void setEnabled(bool enabled) {
+    _isEnabled = enabled;
+    if (!enabled) {
+      _latestResults.clear();
+    }
+    notifyListeners();
+  }
 
   /// Initialize depth estimation service
   Future<void> initialize([DepthEstimationConfig? config]) async {
@@ -392,66 +418,108 @@ class DepthEstimationService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Estimate depth for a list of YOLO detections
-  void estimateDepthForDetections(List<YOLOResult> detections) {
-    _depthResults.clear();
+  /// Estimate depth for all detections in a frame
+  List<DepthEstimationResult> estimateDepthForDetections(
+    List<YOLOResult> detections,
+  ) {
+    if (!_isEnabled || detections.isEmpty) {
+      _latestResults = [];
+      return _latestResults;
+    }
 
-    for (int i = 0; i < detections.length; i++) {
-      final detection = detections[i];
-      final depth = estimateDepthForDetection(detection);
-      
-      if (depth != null) {
-        _depthResults['detection_$i'] = depth;
+    final results = <DepthEstimationResult>[];
+
+    for (final detection in detections) {
+      final result = _estimateDepthForSingleDetection(detection);
+      if (result != null) {
+        results.add(result);
+        _updateStatistics(result);
       }
     }
 
+    _latestResults = results;
     notifyListeners();
+
+    return results;
   }
 
-  /// Estimate depth for a single detection using object size
-  double? estimateDepthForDetection(YOLOResult detection) {
-    final className = detection.label;
-    final boundingBox = detection.box;
-
-    // Get real-world object dimensions
+  /// Estimate depth for a single detection
+  DepthEstimationResult? _estimateDepthForSingleDetection(
+    YOLOResult detection,
+  ) {
+    final className = detection.className.toLowerCase();
     final objectDimensions = _config.objectSizeDatabase[className];
+
     if (objectDimensions == null) {
-      return null; // Unknown object, can't estimate depth
+      // Fallback: Use average object size estimation
+      return _estimateWithFallbackMethod(detection);
     }
 
-    // Calculate pixel dimensions
-    final pixelWidth = boundingBox.x2 - boundingBox.x1;
-    final pixelHeight = boundingBox.y2 - boundingBox.y1;
+    // Calculate bounding box dimensions in pixels
+    final boundingBox = detection.boundingBox;
+    final pixelWidth = boundingBox.width;
+    final pixelHeight = boundingBox.height;
 
-    // Estimate depth using focal length and object dimensions
-    double depth;
+    if (pixelWidth <= 0 || pixelHeight <= 0) {
+      return null; // Invalid bounding box
+    }
+
+    // Get real-world dimension based on method
+    final realWorldSize = objectDimensions.getDimension(_config.method);
+
+    // Calculate depth using pinhole camera model: Z = (f * W) / w
+    double depth = 0.0;
+    String methodDescription = '';
 
     switch (_config.method) {
-      case DepthCalculationMethod.averageDimension:
-        final avgPixelSize = (pixelWidth + pixelHeight) / 2;
-        final avgRealSize = (objectDimensions.width + objectDimensions.height) / 2;
-        final avgFocalLength = (_config.focalLengthX + _config.focalLengthY) / 2;
-        depth = (avgRealSize * avgFocalLength) / avgPixelSize;
-        break;
-        
       case DepthCalculationMethod.width:
-        depth = (objectDimensions.width * _config.focalLengthX) / pixelWidth;
+        depth = (_config.focalLengthX * realWorldSize) / pixelWidth;
+        methodDescription = 'Width-based';
         break;
-        
       case DepthCalculationMethod.height:
-        depth = (objectDimensions.height * _config.focalLengthY) / pixelHeight;
+        depth = (_config.focalLengthY * realWorldSize) / pixelHeight;
+        methodDescription = 'Height-based';
+        break;
+      case DepthCalculationMethod.averageDimension:
+        final depthX = (_config.focalLengthX * realWorldSize) / pixelWidth;
+        final depthY = (_config.focalLengthY * realWorldSize) / pixelHeight;
+        depth = (depthX + depthY) / 2;
+        methodDescription = 'Average dimension';
+        break;
+      case DepthCalculationMethod.maxDimension:
+        final depthX = (_config.focalLengthX * objectDimensions.width) / pixelWidth;
+        final depthY = (_config.focalLengthY * objectDimensions.height) / pixelHeight;
+        depth = math.max(depthX, depthY);
+        methodDescription = 'Max dimension';
+        break;
+      case DepthCalculationMethod.minDimension:
+        final depthX = (_config.focalLengthX * objectDimensions.width) / pixelWidth;
+        final depthY = (_config.focalLengthY * objectDimensions.height) / pixelHeight;
+        depth = math.min(depthX, depthY);
+        methodDescription = 'Min dimension';
         break;
     }
 
-    // Apply bounds checking
-    depth = depth.clamp(_config.minDepth, _config.maxDepth);
+    // Filter outliers and return DepthEstimationResult
+    if (depth < _config.minDepth || depth > _config.maxDepth) {
+      return DepthEstimationResult(
+        detection: detection,
+        estimatedDepth: depth,
+        confidence: 0.1,
+        method: '$methodDescription (filtered)',
+        isReliable: false,
+      );
+    }
 
-    return depth;
-  }
-
-  /// Get depth for a specific detection by index
-  double? getDepthForDetection(int detectionIndex) {
-    return _depthResults['detection_$detectionIndex'];
+    // Calculate confidence and return result
+    final confidence = _calculateConfidence(detection, depth);
+    return DepthEstimationResult(
+      detection: detection,
+      estimatedDepth: depth,
+      confidence: confidence,
+      method: methodDescription,
+      isReliable: confidence > 0.7,
+    );
   }
 }
 
@@ -482,6 +550,7 @@ class DepthEstimationConfig {
     double imageWidth = 1920,
     double imageHeight = 1080,
     double fovDegrees = 70.0,
+    Map<String, ObjectDimensions>? customObjectSizes,
   }) {
     final fovRadians = fovDegrees * math.pi / 180.0;
     final focalLength = (imageWidth / 2) / math.tan(fovRadians / 2);
@@ -491,7 +560,10 @@ class DepthEstimationConfig {
       focalLengthY: focalLength,
       imageWidth: imageWidth,
       imageHeight: imageHeight,
-      objectSizeDatabase: _getDefaultObjectDatabase(),
+      objectSizeDatabase: {
+        ...defaultObjectSizes,
+        if (customObjectSizes != null) ...customObjectSizes,
+      },
     );
   }
 }
@@ -514,12 +586,56 @@ class ObjectDimensions {
     required this.height,
     this.depth = 0.0,
   });
+
+  /// Get the dimension to use based on calculation method
+  double getDimension(DepthCalculationMethod method) {
+    switch (method) {
+      case DepthCalculationMethod.width:
+        return width;
+      case DepthCalculationMethod.height:
+        return height;
+      case DepthCalculationMethod.averageDimension:
+        return (width + height) / 2;
+      case DepthCalculationMethod.maxDimension:
+        return math.max(width, height);
+      case DepthCalculationMethod.minDimension:
+        return math.min(width, height);
+    }
+  }
+}
+
+/// Result of depth estimation for a single object
+class DepthEstimationResult {
+  final YOLOResult detection;
+  final double estimatedDepth; // in meters
+  final double confidence; // 0.0 to 1.0
+  final String method; // Description of method used
+  final bool isReliable; // Whether the estimate is considered reliable
+
+  const DepthEstimationResult({
+    required this.detection,
+    required this.estimatedDepth,
+    required this.confidence,
+    required this.method,
+    required this.isReliable,
+  });
+
+  /// Get depth formatted as a user-friendly string
+  String getFormattedDepth() {
+    if (estimatedDepth < 1.0) {
+      return '${(estimatedDepth * 100).toStringAsFixed(0)}cm';
+    } else if (estimatedDepth < 10.0) {
+      return '${estimatedDepth.toStringAsFixed(1)}m';
+    } else {
+      return '${estimatedDepth.toStringAsFixed(0)}m';
+    }
+  }
 }
 ```
 
 ## Speech Integration Architecture
 
-### Text-to-Speech Service (Real Implementation)
+### Text-to-Speech Service
 
 ```dart
 // services/TTSService.dart - ACTUAL IMPLEMENTATION
@@ -689,7 +805,7 @@ class TTSService extends ChangeNotifier {
 }
 ```
 
-### Speech-to-Text Service (Real Implementation)
+### Speech-to-Text Service
 
 ```dart
 // services/SpeechService.dart - ACTUAL IMPLEMENTATION
@@ -756,7 +872,7 @@ class SpeechService extends ChangeNotifier {
 
 ## Obstacle Avoidance System
 
-### Real Obstacle Avoidance Implementation
+### Obstacle Avoidance Implementation
 
 ```dart
 // services/obstacle_avoidance_service.dart - ACTUAL IMPLEMENTATION
@@ -865,9 +981,9 @@ class ObstacleAvoidanceService extends ChangeNotifier {
   }
 
   void _processObstacleDetection(YOLOResult detection, double depth) {
-    final box = detection.box;
-    final centerX = (box.x1 + box.x2) / 2;
-    final centerY = (box.y1 + box.y2) / 2;
+    final boundingBox = detection.boundingBox;
+    final centerX = (boundingBox.left + boundingBox.right) / 2;
+    final centerY = (boundingBox.top + boundingBox.bottom) / 2;
 
     // Map detection to 3x3 grid
     final gridX = (centerX * gridSize).floor().clamp(0, gridSize - 1);
@@ -902,7 +1018,7 @@ class ObstacleAvoidanceService extends ChangeNotifier {
 
 ## Camera Service Implementation
 
-### Real Camera Service
+### Camera Service
 
 ```dart
 // services/CameraService.dart - ACTUAL IMPLEMENTATION
@@ -963,7 +1079,7 @@ class CameraService extends ChangeNotifier {
 
 ## State Management with Provider
 
-### Main App Structure (Real Implementation)
+### Main App Structure
 
 ```dart
 // main.dart - ACTUAL IMPLEMENTATION
