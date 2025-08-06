@@ -1,0 +1,2 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Error><Code>NoSuchBucket</Code><Message>The specified bucket does not exist</Message><BucketName>assets.coderpad.io</BucketName><RequestId>JVMWH35E8Y7X4HG6</RequestId><HostId>jGlF4B/V7Dwpy6FUrghQ3eqBYVMhyZJ4DftjuHklZN+Eb8W6EJAv0ho0KKAtrP6oJHXcZd0Rd58=</HostId></Error>

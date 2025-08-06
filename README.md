@@ -1,5 +1,7 @@
 # Lumina - AI Assistant for the Visually Impaired
 
+![Lumina Logo](media/cover.jpg)
+
 **"The world sees you."**
 
 Lumina is an innovative Flutter mobile application designed to empower visually impaired individuals through advanced computer vision and AI technologies. The app provides real-time assistance for navigation, object recognition, and environmental understanding.
