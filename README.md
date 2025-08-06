@@ -8,7 +8,7 @@ Lumina is an innovative Flutter mobile application designed to empower visually 
 
 ## Demo
 
-👉 [Watch on TikTok](https://vt.tiktok.com/ZSSQVWkTt/)
+👉 [![Watch the Demo](https://img.youtube.com/vi/G3-jX3C1phU/hqdefault.jpg)](https://youtu.be/G3-jX3C1phU)
 
 ## Features
 
